@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>K1 English Assessment V4.3</title>
+    <style>
+        :root { --primary: #FF6B6B; --secondary: #4ECDC4; --bg: #F7FFF7; --dark: #2C3E50; }
+        body { font-family: 'Chalkboard SE', 'Comic Sans MS', sans-serif; background: var(--bg); text-align: center; padding: 20px; color: var(--dark); margin: 0; }
+        .header-box { background: white; padding: 20px; border-radius: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px; }
+        select { font-size: 1.2rem; padding: 12px; border-radius: 15px; border: 3px solid var(--secondary); outline: none; background: white; min-width: 160px; }
+        .sentence-display { font-size: 1.8rem; background: #FFF3B0; padding: 20px; border-radius: 20px; margin: 20px auto; max-width: 600px; border: 4px dashed #FF9F43; line-height: 1.5; }
+        .sentence-display b { color: #E74C3C; font-size: 2rem; }
+        .main-ui { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        .test-card { background: white; border-radius: 40px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 10px solid #fff; width: 280px; }
+        .test-card img { width: 100%; border-radius: 20px; }
+        .btn-group { display: flex; gap: 15px; justify-content: center; margin: 15px 0; }
+        .btn { border: none; padding: 15px 35px; border-radius: 50px; font-size: 1.3rem; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; display: flex; align-items: center; gap: 8px; }
+        .btn-start { background: #FF6B6B; box-shadow: 0 6px #C0392B; }
+        .btn-start:active { transform: translateY(4px); box-shadow: 0 2px #C0392B; }
+        .btn-stop { background: #45aaf2; box-shadow: 0 6px #2d98da; display: none; }
+        #status { font-size: 1.6rem; font-weight: bold; height: 40px; color: #555; margin: 10px 0; }
+        .result-panel { background: white; border-radius: 30px; padding: 20px; display: none; width: 90%; max-width: 500px; box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
+        .stars { font-size: 5rem; color: #FFD700; text-shadow: 2px 2px #E67E22; margin-bottom: 10px; }
+        audio { width: 100%; height: 50px; margin-top: 15px; border-radius: 10px; }
+        .admin-section { margin-top: 60px; background: white; border-radius: 25px; padding: 25px; border: 2px solid #eee; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border-bottom: 1px solid #eee; padding: 15px; font-size: 1.1rem; text-align: center; }
+        th { background: #f8f9fa; color: #7f8c8d; }
+        .btn-export { background: #27ae60; color: white; border: none; padding: 12px 25px; border-radius: 15px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h1 style="color: var(--primary);">🎤 English Assessment Pro</h1>
+
+    <div class="header-box">
+        <label style="font-weight:bold;">Student ID:</label>
+        <select id="studentID">
+            <option value="">-- Select --</option>
+            <script>
+                for(let i=1; i<=26; i++) {
+                    let id = "No. " + i.toString().padStart(2, '0');
+                    document.write(`<option value="${id}">${id}</option>`);
+                }
+            </script>
+        </select>
+    </div>
+
+    <div class="sentence-display">
+        Please say:<br>
+        "May I have the <b>red car</b>, please?"
+    </div>
+
+    <div class="main-ui">
+        <div class="test-card">
+            <img src="car_red.png" alt="Red Car" onerror="this.src='https://via.placeholder.com/300x200?text=Wait+for+Image'">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #D32F2F; margin-top:10px;">Red Car</div>
+        </div>
+
+        <div class="btn-group">
+            <button id="startBtn" class="btn btn-start" onclick="startRecording()">🔴 Start Recording</button>
+            <button id="stopBtn" class="btn btn-stop" onclick="stopRecording()">⏹️ Stop & Check</button>
+        </div>
+
+        <div id="status">Ready! 👆</div>
+
+        <div id="resultPanel" class="result-panel">
+            <div id="starsDisplay" class="stars"></div>
+            <div id="transcriptText" style="color: #95a5a6; font-style: italic; margin-bottom: 10px;"></div>
+            <audio id="audioPlayer" controls playsinline></audio>
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap: wrap; gap: 10px;">
+            <h2 style="margin:0;">📊 Progress Report</h2>
+            <button class="btn-export" onclick="exportData()">💾 Export CSV</button>
+        </div>
+        <table id="recordTable">
+            <thead>
+                <tr><th>ID</th><th>Color</th><th>Object</th><th>Sentence</th><th>Stars</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <button onclick="clearHistory()" style="margin-top:30px; color:#e74c3c; background:none; border:none; text-decoration:underline;">Clear Data</button>
+    </div>
+
+<script>
+    let recognition;
+    let mediaRecorder;
+    let audioChunks = [];
+    let records = JSON.parse(localStorage.getItem('speaking_v4_data')) || [];
+    let currentTranscript = "";
+
+    // 初始化辨識引擎
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+        recognition = new SpeechRec();
+        recognition.lang = 'en-US';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        
+        recognition.onresult = (event) => {
+            let interim = "";
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                interim += event.results[i][0].transcript;
+            }
+            currentTranscript = interim;
+        };
+
+        recognition.onerror = (e) => console.error("Recognition Error:", e.error);
+    }
+
+    async function startRecording() {
+        const id = document.getElementById('studentID').value;
+        if (!id) { alert("Please select a Student ID!"); return; }
+
+        currentTranscript = "";
+        document.getElementById('startBtn').style.display = 'none';
+        document.getElementById('stopBtn').style.display = 'flex';
+        document.getElementById('resultPanel').style.display = 'none';
+        document.getElementById('status').innerText = "Listening... 🎤";
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mimeType = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+            
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: mimeType });
+                document.getElementById('audioPlayer').src = URL.createObjectURL(audioBlob);
+            };
+
+            mediaRecorder.start();
+            if (recognition) recognition.start();
+        } catch (err) {
+            alert("Microphone Access Denied!");
+        }
+    }
+
+    function stopRecording() {
+        // 停止按鈕按下後立刻處理
+        if (recognition) try { recognition.stop(); } catch(e) {}
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+
+        document.getElementById('startBtn').style.display = 'flex';
+        document.getElementById('stopBtn').style.display = 'none';
+        document.getElementById('status').innerText = "Analyzing... ✨";
+
+        // 給予 500ms 緩衝確保最後一絲文字被捕捉
+        setTimeout(() => {
+            processResult(currentTranscript.toLowerCase());
+        }, 500);
+    }
+
+    function processResult(text) {
+        // 評分邏輯
+        const hasColor = text.includes("red") ? 1 : 0;
+        const hasObject = text.includes("car") ? 1 : 0;
+        const hasSentence = ((text.includes("may i have") || text.includes("i have")) && text.includes("please")) ? 1 : 0;
+        const total = hasColor + hasObject + hasSentence;
+
+        const id = document.getElementById('studentID').value;
+        const entry = { id, color: hasColor, object: hasObject, sentence: hasSentence, stars: total, text: text };
+        
+        records.push(entry);
+        localStorage.setItem('speaking_v4_data', JSON.stringify(records));
+
+        // 更新 UI
+        document.getElementById('status').innerText = "Done! 🌟";
+        document.getElementById('resultPanel').style.display = 'block';
+        document.getElementById('starsDisplay').innerHTML = "⭐".repeat(total) + "▫️".repeat(3 - total);
+        document.getElementById('transcriptText').innerText = `I heard: "${text || '(No speech detected)'}"`;
+        
+        updateTable();
+    }
+
+    function updateTable() {
+        const tbody = document.querySelector('#recordTable tbody');
+        tbody.innerHTML = records.slice().reverse().slice(0, 10).map(r => `
+            <tr>
+                <td><b>${r.id}</b></td>
+                <td>${r.color ? '✅':'❌'}</td>
+                <td>${r.object ? '✅':'❌'}</td>
+                <td>${r.sentence ? '✅':'❌'}</td>
+                <td>${"⭐".repeat(r.stars)}</td>
+            </tr>
+        `).join('');
+    }
+
+    function exportData() {
+        if(!records.length) return alert("No data!");
+        let csv = "\uFEFFStudent ID,Color,Object,Sentence,Stars,Transcript\n";
+        records.forEach(r => csv += `${r.id},${r.color},${r.object},${r.sentence},${r.stars},"${r.text}"\n`);
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8;'}));
+        a.download = `Report_${new Date().toLocaleDateString()}.csv`;
+        a.click();
+    }
+
+    function clearHistory() { if(confirm("Clear records?")) { localStorage.clear(); records = []; updateTable(); } }
+    window.onload = updateTable;
+</script>
+</body>
+</html>
